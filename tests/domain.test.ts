@@ -70,7 +70,7 @@ describe("checkout", () => {
     expect(payment.count).toBe(2);
     expect(url.searchParams.get("amount")).toBe("25100");
     expect(url.searchParams.get("message")).toBe(
-      "E:aBcD12 | 2x Entry[ENTRY001];1:Name=Anna & Søren;2:Name=Bo",
+      "2/Entry|nam=Anna & Søren|nam=Bo",
     );
   });
   it("includes every selected ticket type in one transfer", () => {
@@ -93,7 +93,45 @@ describe("checkout", () => {
       { ENTRY001: [{ NAME0001: "Anna" }] },
     );
     expect(payment.totalOre).toBe(22550);
-    expect(payment.message).toContain("2x Food[FOOD0001]");
+    expect(payment.message).toBe("1/Entry|nam=Anna | 2/Food");
+  });
+  it("uses the requested format with three-character lowercase field labels and no IDs", () => {
+    const withPhone: PublishedEvent = {
+      ...event,
+      tickets: [{
+        ...event.tickets[0],
+        name: "TicketName",
+        fields: [
+          { id: "NAME0001", label: "Navn", type: "text" },
+          { id: "PHONE001", label: "Telefon", type: "tel" },
+          { id: "AGE00001", label: "År", type: "number" },
+        ],
+      }],
+    };
+    const payment = buildPayment(withPhone, { ENTRY001: 1 }, {
+      ENTRY001: [{ NAME0001: "Anna", PHONE001: "+45 12345678", AGE00001: "25" }],
+    });
+    expect(payment.message).toBe("1/TicketName|nav=Anna;tel=+45 12345678;år=25");
+    expect(new URL(payment.url).searchParams.get("message")).toBe(payment.message);
+  });
+  it("keeps each guest's fields together when buying several tickets", () => {
+    const withPhone: PublishedEvent = {
+      ...event,
+      tickets: [{
+        ...event.tickets[0],
+        fields: [
+          { id: "NAME0001", label: "Navn", type: "text" },
+          { id: "PHONE001", label: "Telefon", type: "tel" },
+        ],
+      }],
+    };
+    const payment = buildPayment(withPhone, { ENTRY001: 2 }, {
+      ENTRY001: [
+        { NAME0001: "Anna", PHONE001: "12345678" },
+        { NAME0001: "Bo", PHONE001: "87654321" },
+      ],
+    });
+    expect(payment.message).toBe("2/Entry|nav=Anna;tel=12345678|nav=Bo;tel=87654321");
   });
   it("blocks quantity bypasses, sold-out tickets, and removed ticket types", () => {
     for (const qty of [3, -1, 0.5])
@@ -139,7 +177,7 @@ describe("checkout", () => {
       { ENTRY001: 1 },
       { ENTRY001: [{ NAME0001: "Anna|Bo;\nTest" }] },
     );
-    expect(payment.message).toContain("Name=Anna Bo Test");
+    expect(payment.message).toBe("1/Entry|nam=Anna Bo Test");
   });
 });
 

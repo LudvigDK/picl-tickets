@@ -50,7 +50,7 @@ test("each ticket requires its own name and the message contains both", async ({
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await names.nth(1).fill("Bo");
   await page.getByRole("button", { name: "Preview payment" }).click();
-  await expect(page.getByRole("dialog")).toContainText("1:Name=Anna;2:Name=Bo");
+  await expect(page.getByRole("dialog")).toContainText("2/General admission|nam=Anna|nam=Bo");
   await expect(page.getByRole("dialog")).toContainText("250");
   await expect(page.getByRole("link", { name: "Open MobilePay" })).toHaveCount(
     0,

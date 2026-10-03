@@ -190,7 +190,7 @@ export function buildPayment(
       );
     count += quantity;
     totalOre += ticket.priceOre * quantity;
-    let part = `${quantity}x ${messageValue(ticket.name)}[${ticket.id}]`;
+    let part = `${quantity}/${messageValue(ticket.name)}`;
     for (let i = 0; i < quantity; i++) {
       const fields = ticket.fields.map((field) => {
         const value = answers[ticket.id]?.[i]?.[field.id]?.trim() ?? "";
@@ -204,16 +204,17 @@ export function buildPayment(
           throw new Error(`Enter a valid email for ticket ${i + 1}.`);
         if (field.type === "number" && !/^-?\d+(?:[.,]\d+)?$/.test(value))
           throw new Error(`Enter a number for ${field.label}.`);
-        return `${messageValue(field.label)}=${messageValue(value)}`;
+        const label = [...messageValue(field.label)].slice(0, 3).join("").toLowerCase();
+        return `${label}=${messageValue(value)}`;
       });
-      if (fields.length) part += `;${i + 1}:${fields.join(",")}`;
+      if (fields.length) part += `|${fields.join(";")}`;
     }
     parts.push(part);
   }
   if (!count) throw new Error("Select at least one ticket first.");
   if (!Number.isSafeInteger(totalOre) || totalOre < 1 || totalOre > 3000000)
     throw new Error("This checkout must total between 0.01 and 30,000 kr.");
-  const message = `E:${event.id.slice(0, 6)} | ${parts.join(" | ")}`;
+  const message = parts.join(" | ");
   if ([...message].length > MAX_MESSAGE_LENGTH)
     throw new Error(
       `Your payment message is ${[...message].length} characters. Keep it within ${MAX_MESSAGE_LENGTH} by shortening answers or buying fewer tickets at once. No information has been removed.`,
