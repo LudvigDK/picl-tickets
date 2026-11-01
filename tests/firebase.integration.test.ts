@@ -126,6 +126,50 @@ describe.skipIf(!enabled)(
       };
     });
 
+    it("persists custom banner settings and supports clearing them on existing events", async () => {
+      const customBanner = { text: "  sss  ", color: "#224466", disableTicket: true };
+      await saveEvent({ auth, db }, saved, {
+        ...data,
+        tickets: [{ ...data.tickets[0], fewTicketsLeft: true, customBanner }],
+      });
+      let raw = (await getDocFromServer(doc(db, "events", saved.id))).data()!;
+      expect(raw.tickets[0].customBanner).toEqual({ ...customBanner, text: "sss" });
+      expect(raw.tickets[0].fewTicketsLeft).toBe(true);
+      saved = { ...fromStoredEvent(raw as any), id: saved.id, ownerUid: raw.ownerUid, revision: raw.revision };
+      await saveEvent({ auth, db }, saved, data);
+      raw = (await getDocFromServer(doc(db, "events", saved.id))).data()!;
+      expect(raw.tickets[0]).not.toHaveProperty("customBanner");
+      expect(raw.tickets[0]).not.toHaveProperty("fewTicketsLeft");
+      saved = { ...fromStoredEvent(raw as any), id: saved.id, ownerUid: raw.ownerUid, revision: raw.revision };
+    });
+
+    it("denies malformed banner settings sent directly to Firestore", async () => {
+      const customBanner = { text: "Sales paused", color: "#224466", disableTicket: true };
+      const ticket = toStoredEvent(data).tickets[0];
+      const invalid = [
+        { ...ticket, customBanner: null },
+        { ...ticket, customBanner: { ...customBanner, text: "" } },
+        { ...ticket, customBanner: { ...customBanner, text: "   " } },
+        { ...ticket, customBanner: { ...customBanner, text: "X".repeat(41) } },
+        { ...ticket, customBanner: { ...customBanner, color: "red" } },
+        { ...ticket, customBanner: { ...customBanner, disableTicket: "false" } },
+        { ...ticket, customBanner: { text: "Missing flag", color: "#224466" } },
+        { ...ticket, customBanner: { ...customBanner, extra: true } },
+        { ...ticket, fewTicketsLeft: "true" },
+        { ...ticket, unexpected: true },
+        { ...ticket, fields: {} },
+        { ...ticket, fields: [""] },
+        { ...ticket, fields: Array.from({ length: 5 }, () => "NAME0001:text:Name") },
+      ];
+      for (const invalidTicket of invalid) {
+        await expect(updateDoc(doc(db, "events", saved.id), {
+          revision: saved.revision + 1,
+          updatedAt: serverTimestamp(),
+          tickets: [invalidTicket],
+        })).rejects.toMatchObject({ code: "permission-denied" });
+      }
+    });
+
     it("denies changing ownership, negative prices, and invalid nested fields", async () => {
       const ref = doc(db, "events", saved.id);
       const version = {
@@ -178,6 +222,12 @@ describe.skipIf(!enabled)(
         tickets: Array.from({ length: 6 }, (_, index) => ({
           ...data.tickets[0],
           id: `TICKET0${index}`,
+          fewTicketsLeft: true,
+          customBanner: {
+            text: "B".repeat(40),
+            color: "#123abc",
+            disableTicket: index % 2 === 0,
+          },
           fields: Array.from({ length: 4 }, (_, field) => ({
             id: `FIELD00${field}`,
             label: `Field ${field}`,
@@ -188,6 +238,7 @@ describe.skipIf(!enabled)(
       const id = await createEvent({ auth, db }, full, "max-schema-password");
       const raw = (await getDocFromServer(doc(db, "events", id))).data()!;
       expect(raw.tickets).toHaveLength(6);
+      expect(raw.tickets[5].customBanner.text).toHaveLength(40);
       const maxEvent = {
         ...fromStoredEvent(raw as any),
         ownerUid: raw.ownerUid,

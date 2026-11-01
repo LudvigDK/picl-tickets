@@ -15,8 +15,10 @@ export type StoredEventData = Omit<EventData, "tickets"> & {
 export function toStoredEvent(data: EventData): StoredEventData {
   return {
     ...data,
-    tickets: data.tickets.map((ticket) => ({
+    tickets: data.tickets.map(({ customBanner, fewTicketsLeft, ...ticket }) => ({
       ...ticket,
+      ...(customBanner !== undefined ? { customBanner } : {}),
+      ...(fewTicketsLeft !== undefined ? { fewTicketsLeft } : {}),
       fields: ticket.fields.map(
         (field) => `${field.id}:${field.type}:${field.label}`,
       ),

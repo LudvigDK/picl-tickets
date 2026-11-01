@@ -10,12 +10,20 @@ export interface TicketField {
   label: string;
   type: FieldType;
 }
+export interface TicketBanner {
+  text: string;
+  color: string;
+  disableTicket: boolean;
+}
 export interface Ticket {
   id: string;
   name: string;
   priceOre: number;
   maxPerUser: number;
   soldOut: boolean;
+  // Optional so events published before banners were introduced remain editable.
+  fewTicketsLeft?: boolean;
+  customBanner?: TicketBanner;
   fields: TicketField[];
 }
 export interface EventData {
@@ -38,6 +46,44 @@ export interface Payment {
   message: string;
   totalOre: number;
   count: number;
+}
+
+type TicketAvailability = Pick<Ticket, "soldOut" | "fewTicketsLeft" | "customBanner">;
+
+export function isTicketUnavailable(ticket: TicketAvailability): boolean {
+  return ticket.soldOut || ticket.customBanner?.disableTicket === true;
+}
+
+export function getTicketBanner(ticket: TicketAvailability): TicketBanner | null {
+  if (ticket.soldOut)
+    return { text: "Sold out", color: "#9b463d", disableTicket: true };
+  if (ticket.customBanner) return ticket.customBanner;
+  if (ticket.fewTicketsLeft)
+    return { text: "Few tickets left", color: "#b96a14", disableTicket: false };
+  return null;
+}
+
+function normalizeBanner(value: unknown): TicketBanner {
+  if (!value || typeof value !== "object" || Array.isArray(value))
+    throw new Error("Choose a valid custom ticket banner.");
+  const banner = value as Record<string, unknown>;
+  if (
+    Object.keys(banner).length !== 3 ||
+    typeof banner.text !== "string" ||
+    !banner.text.trim() ||
+    banner.text.trim().length > 40 ||
+    /[\r\n]/.test(banner.text.trim())
+  )
+    throw new Error("Give each custom banner text of up to 40 characters.");
+  if (typeof banner.color !== "string" || !/^#[a-fA-F0-9]{6}$/.test(banner.color))
+    throw new Error("Choose a custom banner color in #RRGGBB format.");
+  if (typeof banner.disableTicket !== "boolean")
+    throw new Error("Choose whether the custom banner disables its ticket.");
+  return {
+    text: banner.text.trim(),
+    color: banner.color,
+    disableTicket: banner.disableTicket,
+  };
 }
 
 export function makeId(): string {
@@ -96,6 +142,9 @@ export function validateEvent(data: EventData): EventData {
     tickets: data.tickets.map((ticket) => ({
       ...ticket,
       name: ticket.name.trim(),
+      ...(ticket.customBanner !== undefined
+        ? { customBanner: normalizeBanner(ticket.customBanner) }
+        : {}),
       fields: ticket.fields.map((field) => ({
         ...field,
         label: field.label.trim(),
@@ -117,6 +166,13 @@ export function validateEvent(data: EventData): EventData {
     if (!/^[A-Z0-9]{8}$/.test(ticket.id) || ticketIds.has(ticket.id))
       throw new Error("Ticket IDs must be unique.");
     ticketIds.add(ticket.id);
+    if (typeof ticket.soldOut !== "boolean")
+      throw new Error("Choose whether each ticket is sold out.");
+    if (
+      ticket.fewTicketsLeft !== undefined &&
+      typeof ticket.fewTicketsLeft !== "boolean"
+    )
+      throw new Error("Choose whether each ticket has a few tickets left.");
     if (!ticket.name || ticket.name.length > 40)
       throw new Error("Give each ticket a name of up to 40 characters.");
     if (
@@ -187,6 +243,10 @@ export function buildPayment(
     if (ticket.soldOut)
       throw new Error(
         `${ticket.name} is sold out. Please update your selection.`,
+      );
+    if (isTicketUnavailable(ticket))
+      throw new Error(
+        `${ticket.name} is currently unavailable. Please update your selection.`,
       );
     count += quantity;
     totalOre += ticket.priceOre * quantity;

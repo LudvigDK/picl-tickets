@@ -511,6 +511,61 @@ svg {
   gap: 16px;
   margin-top: 17px;
 }
+.ticket-banner-settings {
+  min-width: 0;
+  margin: 22px 0 0;
+  padding: 12px 0 0;
+  border: 0;
+  border-top: 1px solid #e2e7d9;
+}
+.ticket-banner-settings legend {
+  padding: 0 8px 0 0;
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+.banner-help {
+  margin: 0 0 14px;
+}
+.ticket-status-switches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px 20px;
+}
+.custom-banner-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 100px;
+  gap: 14px;
+  margin-top: 18px;
+}
+.custom-banner-controls > .field {
+  margin-bottom: 0;
+}
+.banner-color-field input[type="color"] {
+  height: 44px;
+  padding: 4px;
+  cursor: pointer;
+}
+.banner-disable-label {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 0.8125rem;
+  color: #6c7a60;
+  cursor: pointer;
+}
+.banner-disable-label input {
+  width: 17px;
+  height: 17px;
+  min-height: 0;
+  padding: 0;
+  flex-shrink: 0;
+  accent-color: var(--green);
+}
+.custom-banner-controls > .field-helper {
+  grid-column: 1 / -1;
+  margin-top: -7px;
+}
 .text-button {
   border: 0;
   padding: 0;
@@ -539,10 +594,14 @@ svg {
 }
 .switch-label input {
   position: absolute;
-  width: 1px;
-  height: 1px;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
   min-height: 0;
   opacity: 0;
+  z-index: 1;
+  cursor: pointer;
 }
 .switch-track {
   position: relative;
@@ -551,6 +610,7 @@ svg {
   height: 18px;
   border-radius: 20px;
   background: #d6ddcc;
+  flex-shrink: 0;
 }
 .switch-track:after {
   content: "";
@@ -914,7 +974,7 @@ svg {
   font-weight: 550;
   overflow-wrap: anywhere;
 }
-.preview-ticket > div > span {
+.preview-ticket-availability {
   font-size: 0.6875rem;
   color: #6c7a60;
 }
@@ -929,6 +989,17 @@ svg {
   letter-spacing: 0;
   font-size: 0.6875rem;
   white-space: nowrap;
+}
+.ticket-banner {
+  width: fit-content;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  letter-spacing: 0;
+  font-size: 0.6875rem;
+}
+.guest-ticket-top > div:first-child .ticket-banner {
+  margin-top: 8px;
 }
 .preview-pay {
   height: 42px;
