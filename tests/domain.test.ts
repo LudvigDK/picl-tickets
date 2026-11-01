@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
   buildPayment,
+  getTicketBanner,
+  isTicketUnavailable,
   normalizeBoxUrl,
   parsePrice,
   validateEvent,
   type PublishedEvent,
+  type TicketBanner,
 } from "../src/domain";
 import { fromStoredEvent, toStoredEvent } from "../src/storage";
 
@@ -216,5 +219,95 @@ describe("event validation", () => {
         ],
       }),
     ).toThrow("label");
+  });
+});
+
+describe("ticket banners", () => {
+  const banner: TicketBanner = {
+    text: "Members only",
+    color: "#123AbC",
+    disableTicket: false,
+  };
+
+  it("keeps legacy tickets unchanged through validation and storage", () => {
+    const ticket = fromStoredEvent(toStoredEvent(event)).tickets[0];
+    expect(ticket).toEqual(event.tickets[0]);
+    expect(ticket).not.toHaveProperty("customBanner");
+    expect(ticket).not.toHaveProperty("fewTicketsLeft");
+    expect(getTicketBanner(ticket)).toBeNull();
+    expect(isTicketUnavailable(ticket)).toBe(false);
+  });
+
+  it("trims and persists banner text, color, availability, and the few-left flag", () => {
+    const data = validateEvent({
+      ...event,
+      tickets: [{
+        ...event.tickets[0],
+        fewTicketsLeft: true,
+        customBanner: { ...banner, text: "  Members only  ", disableTicket: true },
+      }],
+    });
+    const restored = fromStoredEvent(toStoredEvent(data));
+    expect(restored.tickets[0].customBanner).toEqual({ ...banner, disableTicket: true });
+    expect(restored.tickets[0].fewTicketsLeft).toBe(true);
+    expect(isTicketUnavailable(restored.tickets[0])).toBe(true);
+  });
+
+  it("omits cleared optional settings from Firestore writes", () => {
+    const stored = toStoredEvent({
+      ...event,
+      tickets: [{ ...event.tickets[0], customBanner: undefined, fewTicketsLeft: undefined }],
+    });
+    expect(stored.tickets[0]).not.toHaveProperty("customBanner");
+    expect(stored.tickets[0]).not.toHaveProperty("fewTicketsLeft");
+  });
+
+  it("gives sold out priority over custom banners, then custom over few tickets left", () => {
+    const ticket = { ...event.tickets[0], fewTicketsLeft: true };
+    expect(getTicketBanner(ticket)).toEqual({
+      text: "Few tickets left", color: "#b96a14", disableTicket: false,
+    });
+    expect(getTicketBanner({ ...ticket, customBanner: banner })).toEqual(banner);
+    expect(getTicketBanner({ ...ticket, customBanner: banner, soldOut: true })).toEqual({
+      text: "Sold out", color: "#9b463d", disableTicket: true,
+    });
+  });
+
+  it("keeps informational banners purchasable and rejects a selection disabled after selection", () => {
+    for (const settings of [{ customBanner: banner }, { fewTicketsLeft: true }]) {
+      const data = { ...event, tickets: [{ ...event.tickets[0], fields: [], ...settings }] };
+      expect(isTicketUnavailable(data.tickets[0])).toBe(false);
+      expect(buildPayment(data, { ENTRY001: 1 }, {}).count).toBe(1);
+    }
+    const disabled = {
+      ...event,
+      tickets: [{ ...event.tickets[0], customBanner: { ...banner, disableTicket: true } }],
+    };
+    expect(() => buildPayment(disabled, { ENTRY001: 1 }, {})).toThrow("currently unavailable");
+  });
+
+  it("rejects malformed, empty, oversized, or unsafe custom banner settings", () => {
+    const invalid: unknown[] = [
+      null, true, "Members only", [], {},
+      { ...banner, text: " " },
+      { ...banner, text: "X".repeat(41) },
+      { ...banner, text: "Sales\npaused" },
+      { ...banner, text: 123 },
+      { ...banner, color: "red" },
+      { ...banner, color: "#fff" },
+      { ...banner, color: "#123456;display:none" },
+      { ...banner, disableTicket: "false" },
+      { ...banner, extra: true },
+    ];
+    for (const customBanner of invalid) {
+      expect(() => validateEvent({
+        ...event,
+        tickets: [{ ...event.tickets[0], customBanner: customBanner as TicketBanner }],
+      })).toThrow();
+    }
+    expect(() => validateEvent({
+      ...event,
+      tickets: [{ ...event.tickets[0], fewTicketsLeft: "true" as unknown as boolean }],
+    })).toThrow("few tickets left");
   });
 });

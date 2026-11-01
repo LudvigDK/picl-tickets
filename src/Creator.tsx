@@ -21,6 +21,7 @@ import {
   eventUrl,
   formatDate,
   formatMoney,
+  isTicketUnavailable,
   makeId,
   MAX_FIELDS,
   MAX_QUANTITY,
@@ -30,8 +31,14 @@ import {
   type FieldType,
   type PublishedEvent,
   type TicketField,
+  type TicketBanner,
 } from "./domain";
-import { ErrorMessage, Pickle, SectionHeading } from "./components";
+import {
+  ErrorMessage,
+  Pickle,
+  SectionHeading,
+  TicketBannerBadge,
+} from "./components";
 
 interface DraftTicket {
   id: string;
@@ -39,6 +46,8 @@ interface DraftTicket {
   price: string;
   maxPerUser: number;
   soldOut: boolean;
+  fewTicketsLeft?: boolean;
+  customBanner?: TicketBanner;
   fields: TicketField[];
 }
 const newTicket = (): DraftTicket => ({
@@ -47,6 +56,7 @@ const newTicket = (): DraftTicket => ({
   price: "125",
   maxPerUser: 4,
   soldOut: false,
+  fewTicketsLeft: false,
   fields: [],
 });
 
@@ -121,8 +131,12 @@ export default function Creator({
         location,
         boxUrl,
         tickets: tickets.map((ticket) => {
-          const { price, ...rest } = ticket;
-          return { ...rest, priceOre: parsePrice(price) };
+          const { price, customBanner, ...rest } = ticket;
+          return {
+            ...rest,
+            ...(customBanner ? { customBanner } : {}),
+            priceOre: parsePrice(price),
+          };
         }),
       };
       if (!isEditing && password !== confirmPassword)
@@ -308,7 +322,7 @@ export default function Creator({
               {tickets.map((ticket, index) => (
                 <div
                   key={ticket.id}
-                  className={`ticket-editor ${ticket.soldOut ? "is-sold-out" : ""}`}
+                  className={`ticket-editor ${isTicketUnavailable(ticket) ? "is-sold-out" : ""}`}
                 >
                   <div className="ticket-editor-heading">
                     <span>
@@ -474,21 +488,126 @@ export default function Creator({
                     >
                       <Plus size={16} /> Add custom field
                     </button>
-                    <label className="switch-label">
-                      <input
-                        type="checkbox"
-                        role="switch"
-                        checked={ticket.soldOut}
-                        onChange={(event) =>
-                          updateTicket(ticket.id, {
-                            soldOut: event.target.checked,
-                          })
-                        }
-                      />
-                      <span className="switch-track" />
-                      Sold out
-                    </label>
                   </div>
+                  <fieldset className="ticket-banner-settings">
+                    <legend>Ticket banners</legend>
+                    <p className="field-helper banner-help">
+                      Update these manually as availability changes. Sold out
+                      takes priority, then your custom banner.
+                    </p>
+                    <div className="ticket-status-switches">
+                      <label className="switch-label">
+                        <input
+                          type="checkbox"
+                          role="switch"
+                          checked={ticket.soldOut}
+                          onChange={(event) =>
+                            updateTicket(ticket.id, {
+                              soldOut: event.target.checked,
+                            })
+                          }
+                        />
+                        <span className="switch-track" />
+                        Sold out
+                      </label>
+                      <label className="switch-label">
+                        <input
+                          type="checkbox"
+                          role="switch"
+                          aria-label={`Few tickets left for ticket ${index + 1}`}
+                          checked={ticket.fewTicketsLeft ?? false}
+                          onChange={(event) =>
+                            updateTicket(ticket.id, {
+                              fewTicketsLeft: event.target.checked,
+                            })
+                          }
+                        />
+                        <span className="switch-track" />
+                        Few tickets left
+                      </label>
+                      <label className="switch-label">
+                        <input
+                          type="checkbox"
+                          role="switch"
+                          aria-label={`Custom banner for ticket ${index + 1}`}
+                          checked={!!ticket.customBanner}
+                          onChange={(event) =>
+                            updateTicket(ticket.id, {
+                              customBanner: event.target.checked
+                                ? {
+                                    text: "",
+                                    color: "#698745",
+                                    disableTicket: false,
+                                  }
+                                : undefined,
+                            })
+                          }
+                        />
+                        <span className="switch-track" />
+                        Custom banner
+                      </label>
+                    </div>
+                    {ticket.customBanner && (
+                      <div className="custom-banner-controls">
+                        <label className="field">
+                          Banner text <span className="required">*</span>
+                          <input
+                            id={`banner-text-${ticket.id}`}
+                            aria-label={`Banner text for ticket ${index + 1}`}
+                            required
+                            maxLength={40}
+                            value={ticket.customBanner.text}
+                            placeholder="e.g. Sales open Friday"
+                            onChange={(event) =>
+                              updateTicket(ticket.id, {
+                                customBanner: {
+                                  ...ticket.customBanner!,
+                                  text: event.target.value,
+                                },
+                              })
+                            }
+                          />
+                        </label>
+                        <label className="field banner-color-field">
+                          Banner color
+                          <input
+                            id={`banner-color-${ticket.id}`}
+                            aria-label={`Banner color for ticket ${index + 1}`}
+                            type="color"
+                            value={ticket.customBanner.color}
+                            onChange={(event) =>
+                              updateTicket(ticket.id, {
+                                customBanner: {
+                                  ...ticket.customBanner!,
+                                  color: event.target.value,
+                                },
+                              })
+                            }
+                          />
+                        </label>
+                        <label className="banner-disable-label">
+                          <input
+                            type="checkbox"
+                            aria-label={`Disable ticket purchases for ticket ${index + 1}`}
+                            checked={ticket.customBanner.disableTicket}
+                            onChange={(event) =>
+                              updateTicket(ticket.id, {
+                                customBanner: {
+                                  ...ticket.customBanner!,
+                                  disableTicket: event.target.checked,
+                                },
+                              })
+                            }
+                          />
+                          Disable ticket purchases
+                        </label>
+                        <p className="field-helper">
+                          Leave this off to keep the ticket available with your
+                          banner.
+                        </p>
+                      </div>
+                    )}
+                  </fieldset>
                 </div>
               ))}
             </div>
@@ -668,20 +787,19 @@ export default function Creator({
                 </div>
                 {tickets.map((ticket, index) => (
                   <div className="preview-ticket" key={ticket.id}>
-                    <div>
+                    <div className="preview-ticket-details">
                       <strong>{ticket.name || `Ticket ${index + 1}`}</strong>
-                      <span>
+                      <span className="preview-ticket-availability">
                         {ticket.soldOut
                           ? "All snapped up"
-                          : `Max. ${ticket.maxPerUser} per person`}
+                          : isTicketUnavailable(ticket)
+                            ? "Currently unavailable"
+                            : `Max. ${ticket.maxPerUser} per person`}
                       </span>
+                      <TicketBannerBadge ticket={ticket} />
                     </div>
-                    <span
-                      className={
-                        ticket.soldOut ? "badge sold-out" : "preview-price"
-                      }
-                    >
-                      {ticket.soldOut ? "Sold out" : previewPrice(ticket.price)}
+                    <span className="preview-price">
+                      {previewPrice(ticket.price)}
                     </span>
                   </div>
                 ))}

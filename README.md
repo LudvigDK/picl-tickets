@@ -42,9 +42,13 @@ Keep the password and event link: there is no organizer inbox or automatic passw
 
 ## Use the app
 
-- **Create:** `/#/create` — title, description, optional Copenhagen date/time and location, up to six ticket types, DKK prices, limits, sold-out switches, up to four required fields per ticket, a MobilePay Box share link, and an editing password.
+- **Create:** `/#/create` — title, description, optional Copenhagen date/time and location, up to six ticket types, DKK prices, limits, ticket banners, up to four required fields per ticket, a MobilePay Box share link, and an editing password.
 - **Guest event:** `/#/event/EVENT_ID` — select quantities and complete a separate set of fields for every ticket. Mobile visitors open MobilePay; desktop visitors get a locally generated QR code and payment link.
 - **Edit:** `/#/event/EVENT_ID/edit` — unlock with the original password, update the event, mark tickets sold out, and save. The creator includes separate guest and editing links.
+
+Each ticket has manual **Sold out** and **Few tickets left** switches. Few tickets left keeps purchases available; it does not track or reserve inventory. Enable **Custom banner** to choose up to 40 characters of text and a background color. Its **Disable ticket purchases** checkbox decides whether guests can select that ticket. Banner text automatically uses a contrasting foreground color. When several settings are on, Sold out takes priority, followed by the custom banner, then Few tickets left. Turning the custom banner off removes its purchase restriction. Guest selections and payment previews clear when the host saves an availability change.
+
+Existing events work without a data migration. Deploy the updated `firestore.rules` before deploying the new frontend so Firebase accepts the optional banner settings. The GitHub Pages workflow does not deploy these rules.
 
 Hash routing works on GitHub Pages without server rewrites. Event IDs come from Firestore; share links use those persisted IDs and the current host, so they work under a GitHub repository path too. Buyers see live edits, and checkout performs a fresh server read before producing a payment link.
 
@@ -98,7 +102,7 @@ pnpm exec playwright install chromium
 pnpm test:e2e
 ```
 
-Unit tests cover cents-safe pricing, link validation/encoding, multiple per-ticket answers, quantity limits, sold-out rejection, message overflow, and Unicode field definitions. Browser tests cover the creator, custom-field controls, guest checkout, sold-out tickets, required per-ticket answers, invalid routes, and mobile layout. Browser tests use the explicitly read-only example.
+Unit tests cover cents-safe pricing, link validation/encoding, multiple per-ticket answers, quantity limits, unavailable-ticket rejection, banner validation/priority, legacy storage, message overflow, and Unicode field definitions. Browser tests cover the creator, custom-field and banner controls, guest checkout, unavailable tickets, required per-ticket answers, invalid routes, and mobile layout. Ordinary browser tests use the explicitly read-only example; banner guest tests replace that example with isolated fixtures.
 
 For local Firebase integration, install the Firebase CLI and a compatible Java runtime, then run:
 
@@ -114,7 +118,9 @@ With the emulators running, execute the database integration tests:
 FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 pnpm test
 ```
 
-These tests create disposable events in the `demo-picl-events` emulator and verify public reads, denied listing/unauthorized edits, password unlock, sold-out persistence, immutable ownership, invalid content rejection, stale revision conflicts, and creation/editing at the full supported schema size. They are skipped by the ordinary test command when the emulator environment variable is absent. Custom field definitions are stored as compact `ID:type:label` strings so the schema fits Firestore’s rule-expression budget; the app converts them to structured fields on read.
+With Vite configured for the demo emulators as above, also run `FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 pnpm test:e2e` to include the host save/reload and live guest availability scenario. This scenario is skipped without that environment variable.
+
+These tests create disposable events in the `demo-picl-events` emulator and verify public reads, denied listing/unauthorized edits, password unlock, sold-out and custom-banner persistence, removing banners, immutable ownership, invalid content rejection, stale revision conflicts, and creation/editing at the full supported schema size including banners. They are skipped by the ordinary test command when the emulator environment variable is absent. Custom field definitions are stored as compact `ID:type:label` strings so the schema fits Firestore’s rule-expression budget; the app converts them to structured fields on read.
 
 ## Visual direction
 

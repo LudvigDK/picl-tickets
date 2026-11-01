@@ -16,6 +16,7 @@ import {
   buildPayment,
   formatDate,
   formatMoney,
+  isTicketUnavailable,
   MAX_MESSAGE_LENGTH,
   type Answers,
   type Payment,
@@ -24,7 +25,7 @@ import {
 } from "./domain";
 import { friendlyError, refreshEvent } from "./events";
 import type { FirebaseServices } from "./firebase";
-import { ErrorMessage, Modal, Pickle } from "./components";
+import { ErrorMessage, Modal, Pickle, TicketBannerBadge } from "./components";
 
 export default function EventScreen({
   event,
@@ -42,13 +43,15 @@ export default function EventScreen({
   const [busy, setBusy] = useState(false);
   const [demoPreview, setDemoPreview] = useState(false);
   const count = event.tickets.reduce(
-    (sum, ticket) => sum + (ticket.soldOut ? 0 : (quantities[ticket.id] ?? 0)),
+    (sum, ticket) =>
+      sum + (isTicketUnavailable(ticket) ? 0 : (quantities[ticket.id] ?? 0)),
     0,
   );
   const totalOre = event.tickets.reduce(
     (sum, ticket) =>
       sum +
-      (ticket.soldOut ? 0 : (quantities[ticket.id] ?? 0)) * ticket.priceOre,
+      (isTicketUnavailable(ticket) ? 0 : (quantities[ticket.id] ?? 0)) *
+        ticket.priceOre,
     0,
   );
 
@@ -58,7 +61,7 @@ export default function EventScreen({
       Object.fromEntries(
         event.tickets.map((ticket) => [
           ticket.id,
-          ticket.soldOut
+          isTicketUnavailable(ticket)
             ? 0
             : Math.min(current[ticket.id] ?? 0, ticket.maxPerUser),
         ]),
@@ -129,6 +132,7 @@ export default function EventScreen({
   }
 
   const allSoldOut = event.tickets.every((ticket) => ticket.soldOut);
+  const allUnavailable = event.tickets.every(isTicketUnavailable);
 
   return (
     <main className="guest-main">
@@ -167,7 +171,11 @@ export default function EventScreen({
       <div className="guest-grid">
         <section className="event-story">
           <span className="badge">
-            {allSoldOut ? "ALL TICKETS SOLD OUT" : "YOU’RE INVITED"}
+            {allSoldOut
+              ? "ALL TICKETS SOLD OUT"
+              : allUnavailable
+                ? "TICKETS UNAVAILABLE"
+                : "YOU’RE INVITED"}
           </span>
           <h1>{event.title}</h1>
           <div className="event-meta">
@@ -217,7 +225,7 @@ export default function EventScreen({
             {event.tickets.map((ticket) => (
               <div
                 key={ticket.id}
-                className={`guest-ticket ${ticket.soldOut ? "ticket-unavailable" : ""}`}
+                className={`guest-ticket ${isTicketUnavailable(ticket) ? "ticket-unavailable" : ""}`}
               >
                 <div className="guest-ticket-top">
                   <div>
@@ -228,10 +236,12 @@ export default function EventScreen({
                     <p className="field-helper">
                       Max. {ticket.maxPerUser} per person, per checkout
                     </p>
+                    <TicketBannerBadge ticket={ticket} />
+                    {!ticket.soldOut && isTicketUnavailable(ticket) && (
+                      <p className="field-helper">Ticket purchases are unavailable.</p>
+                    )}
                   </div>
-                  {ticket.soldOut ? (
-                    <span className="badge sold-out">Sold out</span>
-                  ) : (
+                  {!isTicketUnavailable(ticket) && (
                     <div className="quantity-control">
                       <button
                         type="button"
@@ -258,7 +268,7 @@ export default function EventScreen({
                     </div>
                   )}
                 </div>
-                {!ticket.soldOut &&
+                {!isTicketUnavailable(ticket) &&
                   ticket.fields.length > 0 &&
                   Array.from(
                     { length: quantities[ticket.id] ?? 0 },
@@ -321,15 +331,17 @@ export default function EventScreen({
           <button
             type="submit"
             className="button primary payment-button"
-            disabled={!count || busy || allSoldOut}
+            disabled={!count || busy || allUnavailable}
           >
             {busy
               ? "Checking tickets…"
               : allSoldOut
                 ? "All tickets sold out"
-                : demo
-                  ? "Preview payment"
-                  : "Pay with MobilePay"}
+                : allUnavailable
+                  ? "Tickets unavailable"
+                  : demo
+                    ? "Preview payment"
+                    : "Pay with MobilePay"}
             <ArrowRight size={18} />
           </button>
           <p className="checkout-help">

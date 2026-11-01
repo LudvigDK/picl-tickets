@@ -2,27 +2,34 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     function validFields(fields) {
-      // Validate every compact definition in one expression rather than unrolling 32 maps.
-      return fields is list && fields.size() <= 4
-        && (fields.size() == 0 || fields.join('\n').matches('^[A-Z0-9]{8}:(text|email|tel|number):[^\n]{1,30}(\n[A-Z0-9]{8}:(text|email|tel|number):[^\n]{1,30}){0,3}$'));
+      // Only lists support join; the pattern enforces one to four nonempty definitions.
+      return fields == [] || fields.join('\n').matches('^[A-Z0-9]{8}:(text|email|tel|number):[^\n]{1,30}(\n[A-Z0-9]{8}:(text|email|tel|number):[^\n]{1,30}){0,3}$');
     }
-    function validTicket(t) {
+    function validBanner(b) {
+      // Access all three required properties; the exact key count excludes extras.
+      return b.keys().size() == 3
+        && b.text.matches('^\\S(.{0,38}\\S)?$')
+        && b.color.matches('^#[a-fA-F0-9]{6}$')
+        && b.disableTicket is bool;
+    }
+    function validTicket(t, allowedKeys) {
       let fields = t.fields;
       let price = t.priceOre;
       let limit = t.maxPerUser;
-      // All six required fields are accessed below; an exact key count excludes extras.
-      return t.keys().size() == 6
+      // All six legacy fields remain required; new banner settings are optional.
+      return t.keys().hasOnly(allowedKeys)
         && t.id.matches('^[A-Z0-9]{8}$')
         && t.name.matches('^.{1,40}$')
         && price is int && price >= 1 && price <= 3000000
         && limit is int && limit >= 1 && limit <= 20
-        && t.soldOut is bool && validFields(fields);
-    }
-    function validTicketAt(tickets, i) {
-      return tickets.size() > i ? validTicket(tickets[i]) : true;
+        && t.soldOut is bool && validFields(fields)
+        && t.get('fewTicketsLeft', false) is bool
+        && (!('customBanner' in t) || validBanner(t.customBanner));
     }
     function validEvent(d) {
       let tickets = d.tickets;
+      let ticketCount = tickets.size();
+      let ticketKeys = ['id', 'name', 'priceOre', 'maxPerUser', 'soldOut', 'fields', 'fewTicketsLeft', 'customBanner'];
       // Required fields are accessed by validation and the create/update guard.
       return d.keys().size() == 10
         && d.title is string && d.title.size() > 0 && d.title.size() <= 100
@@ -33,10 +40,13 @@ service cloud.firestore {
         && d.boxUrl.matches('^https://qr[.]mobilepay[.]dk/box/[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}/pay-in$')
         && d.ownerUid is string && d.ownerUid.size() > 0
         && d.revision is int && d.revision >= 1
-        && tickets is list && tickets.size() >= 1 && tickets.size() <= 6
-        && validTicketAt(tickets, 0) && validTicketAt(tickets, 1)
-        && validTicketAt(tickets, 2) && validTicketAt(tickets, 3)
-        && validTicketAt(tickets, 4) && validTicketAt(tickets, 5);
+        && tickets is list && ticketCount >= 1 && ticketCount <= 6
+        && validTicket(tickets[0], ticketKeys)
+        && (ticketCount < 2 || validTicket(tickets[1], ticketKeys))
+        && (ticketCount < 3 || validTicket(tickets[2], ticketKeys))
+        && (ticketCount < 4 || validTicket(tickets[3], ticketKeys))
+        && (ticketCount < 5 || validTicket(tickets[4], ticketKeys))
+        && (ticketCount < 6 || validTicket(tickets[5], ticketKeys));
     }
     match /events/{eventId} {
       // Anyone with a link can view an event; there is no public event directory.
